@@ -51,4 +51,39 @@ Main optimizations on CPU -> [fast_ops.py](minitorch/fast_ops.py):
 
 ### Matrix Multiplication ([guide](https://minitorch.github.io/module3/matrixmult/))
 
+In matrix multiplication involving tensors, the **batch dimension** is an additional dimension used to group multiple matrices together in a single tensor. This is useful when performing operations like matrix multiplication on a set of matrices that share the same dimensional properties.
+
+Consider three-dimensional tensors where the first dimension represents the batch size:
+The content you provided can be rewritten in proper LaTeX format as follows:
+
+- **Tensor A**: Shape $(B, M, K)$
+- **Tensor B**: Shape $(B, K, N)$
+
+The result tensor $C$ will have the shape $(B, M, N)$, where each matrix $C[b]$ is the result of multiplying $A[b]$ and $B[b]$ for the $b$-th batch.
+
+#### Role of Batch Dimension in [`_tensor_matrix_multiply`](minitorch/fast_ops.py)
+
+The batch dimension allows the function to **handle multiple matrix multiplications in one go**. For each matrix pair in the batch, the function performs the matrix multiplication independently.
+
+```python
+for i in prange(out_shape[0]):  # Iterate over batch dimension
+```
+
+In this loop, `i` represents the index of the current matrix pair in the batch. Each iteration processes a different pair of matrices from tensors A and B.
+
+The calculation for a single element in the output tensor is:
+
+```python
+a_inner = i * a_batch_stride + j * a_strides[1]
+b_inner = i * b_batch_stride + k * b_strides[2]
+
+num = 0.0
+for _ in range(a_shape[-1]):  # Sum over the inner dimension
+    num += a_storage[a_inner] * b_storage[b_inner]
+    a_inner += a_strides[2]
+    b_inner += b_strides[1]
+```
+
+Here, `a_inner` and `b_inner` are adjusted for the current batch and element positions. The inner loop performs the dot product calculation for the matrices at index `i` in the batch.
+
 ### [Parallelism with CUDA on GPU](https://minitorch.github.io/module3/cuda/)

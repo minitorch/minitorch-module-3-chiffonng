@@ -43,16 +43,15 @@ def index_to_position(index: Index, strides: Strides) -> int:
 
     Returns:
         Position in storage
-
-    Raises:
-        ValueError : if the length of `index` and `strides` are not equal
     """
-    if len(index) != len(strides):
-        raise ValueError(
-            "Index and strides must have the same length. Got %d and %d."
-            % (len(index), len(strides))
-        )
-    return sum(i * stride for i, stride in zip(index, strides))
+    # ! numba nopython mode doesn't support descriptive error messages
+    assert len(index) == len(strides), "Index and strides must have the same length."
+
+    # ! numba nopython mode doesn't support yielding (e.g. sum())
+    pos = 0
+    for i in range(len(index)):
+        pos += index[i] * strides[i]
+    return pos
 
 
 def to_index(ordinal: int, shape: Shape, out_index: OutIndex) -> None:
