@@ -3,7 +3,13 @@ Be sure you have minitorch installed in you Virtual Env.
 >>> pip install -Ue .
 """
 
-import minitorch
+import os
+import sys
+
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(parent_dir)
+
+import minitorch  # noqa: E402
 
 
 def RParam(*shape):
@@ -21,7 +27,9 @@ class Network(minitorch.Module):
         self.layer3 = Linear(hidden_layers, 1)
 
     def forward(self, x):
-        raise NotImplementedError("Need to include this file from past assignment.")
+        h = self.layer1.forward(x).relu()
+        h = self.layer2.forward(h).relu()
+        return self.layer3.forward(h).sigmoid()
 
 
 class Linear(minitorch.Module):
@@ -32,7 +40,25 @@ class Linear(minitorch.Module):
         self.out_size = out_size
 
     def forward(self, x):
-        raise NotImplementedError("Need to include this file from past assignment.")
+        """Manual implementation for matrix multiplication
+        x @ self.weights.value + self.bias.value"""
+
+        # Manually broadcasting x and weights for element-wise multiplication
+        x_broadcasted = x.view(*x.shape, 1)  # (batch_size, in_size, 1)
+        weights_broadcasted = self.weights.value.view(
+            1, *self.weights.value.shape
+        )  # (1, in_size, out_size)
+
+        # Element-wise multiplication for 2 tensors of same dimensions
+        # -> (batch_size, in_size, out_size)
+        v_1 = x_broadcasted * weights_broadcasted
+
+        # Summing over the input dimension (in_size)
+        # then reshaping to (batch_size, out_size)
+        v_2 = v_1.sum(dim=1).contiguous().view(x.shape[0], self.out_size)
+
+        # Adding the (reshaped) bias. -> (batch_size, out_size)
+        return v_2 + self.bias.value.view(1, self.out_size)
 
 
 def default_log_fn(epoch, total_loss, correct, losses):
@@ -51,7 +77,6 @@ class TensorTrain:
         return self.model.forward(minitorch.tensor(X))
 
     def train(self, data, learning_rate, max_epochs=500, log_fn=default_log_fn):
-
         self.learning_rate = learning_rate
         self.max_epochs = max_epochs
         self.model = Network(self.hidden_layers)
@@ -87,7 +112,7 @@ class TensorTrain:
 
 if __name__ == "__main__":
     PTS = 50
-    HIDDEN = 2
-    RATE = 0.5
-    data = minitorch.datasets["Simple"](PTS)
+    HIDDEN = 5
+    RATE = 0.05
+    data = minitorch.datasets["Xor"](PTS)
     TensorTrain(HIDDEN).train(data, RATE)

@@ -53,9 +53,6 @@ class Function:
 
         # Call forward with the variables.
         c = cls._forward(ctx, *raw_vals)
-        # assert isinstance(c, Tensor), "Expected return type Tensor got %s" % (
-        #     type(c)
-        # )
 
         # Create a new variable from the result with a new history.
         back = None
@@ -99,51 +96,76 @@ class Add(Function):
 class Mul(Function):
     @staticmethod
     def forward(ctx: Context, a: Tensor, b: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        ctx.save_for_backward(a, b)
+
+        # Tensor.backend.mul_zip(a, b)
+        # Tensor wraps tensor backend (tensor.py)
+        # TensorBackend is implemented in tensor_ops.py
+        return a.f.mul_zip(a, b)
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        a, b = ctx.saved_values
+        return (
+            grad_output.f.mul_zip(grad_output, b),
+            grad_output.f.mul_zip(a, grad_output),
+        )
 
 
 class Sigmoid(Function):
     @staticmethod
     def forward(ctx: Context, t1: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        sig = t1.f.sigmoid_map(t1)
+        ctx.save_for_backward(sig)
+        return sig
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        """Derivative of the sigmoid function is sigmoid(x) * (1 - sigmoid(x)) * grad_output."""
+        (sig,) = ctx.saved_values
+        neg_sig = sig.f.neg_map(sig)
+        return grad_output.f.mul_zip(
+            sig.f.mul_zip(sig, 1 + neg_sig),
+            grad_output,
+        )
 
 
 class ReLU(Function):
     @staticmethod
     def forward(ctx: Context, t1: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        ctx.save_for_backward(t1)
+        return t1.f.relu_map(t1)
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        (t1,) = ctx.saved_values
+        return grad_output.f.relu_back_zip(t1, grad_output)
 
 
 class Log(Function):
     @staticmethod
     def forward(ctx: Context, t1: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        ctx.save_for_backward(t1)
+        return t1.f.log_map(t1)
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        (t1,) = ctx.saved_values
+        return grad_output.f.log_back_zip(t1, grad_output)
 
 
 class Exp(Function):
     @staticmethod
     def forward(ctx: Context, t1: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        exp = t1.f.exp_map(t1)
+        ctx.save_for_backward(exp)
+        return exp
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        """Derivative of the exponential function is exp(x) * grad_output."""
+        (exp,) = ctx.saved_values
+        return grad_output.f.mul_zip(exp, grad_output)
 
 
 class Sum(Function):
@@ -154,7 +176,7 @@ class Sum(Function):
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, float]:
-        a_shape, dim = ctx.saved_values
+        _, _ = ctx.saved_values
         return grad_output, 0.0
 
 
@@ -170,37 +192,61 @@ class All(Function):
 class LT(Function):
     @staticmethod
     def forward(ctx: Context, a: Tensor, b: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        ctx.save_for_backward(a.shape, b.shape)
+        return a.f.lt_zip(a, b)
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        """Derivative of the less than function is 0."""
+        a_shape, b_shape = ctx.saved_values
+        return zeros(a_shape), zeros(b_shape)
 
 
 class EQ(Function):
     @staticmethod
     def forward(ctx: Context, a: Tensor, b: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        ctx.save_for_backward(a.shape, b.shape)
+        return a.f.eq_zip(a, b)
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        """Derivative of the equal function is 0."""
+        a_shape, b_shape = ctx.saved_values
+        return zeros(a_shape), zeros(b_shape)
 
 
 class IsClose(Function):
     @staticmethod
     def forward(ctx: Context, a: Tensor, b: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        ctx.save_for_backward(a.shape, b.shape)
+        return a.f.is_close_zip(a, b)
 
 
 class Permute(Function):
     @staticmethod
     def forward(ctx: Context, a: Tensor, order: Tensor) -> Tensor:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        """Permute the dimensions of a tensor, given a new order."""
+        # permute(self, *order:int) is a method defined for TensorData in tensor_data.py
+        # Tensor._tensor is an instance of TensorData
+        # TensorData._storage is of type Storage (tensor_data.py), a np array of float64
+        # So we must convert to a list of integers to pass as `order`
+        int_order = [int(x) for x in order._tensor._storage]
+        ctx.save_for_backward(int_order)
+
+        # a._new creates a new tensor with the same backend as `a`
+        return a._new(a._tensor.permute(*int_order))
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, float]:
-        raise NotImplementedError("Need to include this file from past assignment.")
+        """Permute the gradients back to the original order."""
+        (new_order,) = ctx.saved_values
+
+        # Create a mapping from value to index for efficient lookup
+        # Use the mapping to construct the original order
+        original_order_map = {v: i for i, v in enumerate(new_order)}
+        original_order = [original_order_map[i] for i in range(len(new_order))]
+
+        return grad_output._new(grad_output._tensor.permute(*original_order)), 0.0
 
 
 class View(Function):
